@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusEvening: TextView
     private lateinit var itemsText: TextView
 
-    private fun buildLayout(): LinearLayout {
+    private fun buildLayout(): ScrollView {
         val ctx = this
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
         itemsText = TextView(ctx).apply {
             textSize = 16f; setTextColor(0xFF555555.toInt()); setPadding(0, 0, 0, 48)
         }
-        root.addView(ScrollView(ctx).apply { addView(itemsText) })
+        root.addView(itemsText)  // 外层 ScrollView 包整页，这里不需要再嵌套
 
         // 按钮
         fun makeBtn(text: String, color: Int, onClick: () -> Unit): Button =
@@ -163,6 +163,9 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        return root
+        return ScrollView(ctx).apply {
+            addView(root)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
     }
 }
