@@ -67,7 +67,9 @@ class MainActivity : AppCompatActivity() {
             if (eveningDone) "✅ 已完成" else "⏳ 待触发"
         }  (${String.format("%02d:%02d", cfg.eveningStartHour, cfg.eveningStartMinute)})"
 
-        itemsText.text = cfg.items.joinToString("\n") { "• $it" }
+        itemsText.text = Prefs.getDueItems(this).joinToString("\n") { item ->
+            "• ${item.text}${if (item.intervalDays > 1) "  (每${item.intervalDays}天)" else ""}"
+        }.ifBlank { "🎉 今日无到期提醒" }
     }
 
     // —— 动态构建布局（节省 XML 资源文件） ——

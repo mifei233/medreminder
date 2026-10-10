@@ -11,7 +11,6 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -20,7 +19,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.example.medreminder.MainActivity
-
 import com.example.medreminder.util.PermissionHelper
 import com.example.medreminder.util.Prefs
 import com.example.medreminder.util.ReminderScheduler
@@ -28,11 +26,9 @@ import com.example.medreminder.util.ReminderScheduler
 /**
  * 半屏悬浮窗 Service
  *
- * 显示形式：从屏幕底部弹出半屏弹窗，列出今日提醒清单 + "我已完成"按钮。
- * 手动点击按钮后：
- *   1. Prefs 记录今日已完成（早/晚分别标记）
- *   2. 取消后续的挂起闹钟
- *   3. 关闭悬浮窗
+ * 三个按钮：
+ *   ✅ 我已完成 → 标记到期 items 完成 + 标记时段完成 + cancelAll + 关窗
+ *   ⏸ 稍后再说 → 只关窗，不标记完成；AlarmReceiver 排的后续闹钟还会继续弹
  */
 class ReminderOverlayService : Service() {
 
@@ -49,15 +45,12 @@ class ReminderOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // 前台 Service 保活（Android 8+ 要求）
         startForeground(NOTIFICATION_ID, buildNotification())
 
         if (intent == null) return START_STICKY
         currentAlarmId = intent.getIntExtra(EXTRA_ALARM_ID, ReminderScheduler.ALARM_MORNING)
 
         if (!PermissionHelper.canDrawOverlays(this)) {
-            // 悬浮窗权限缺失 → 发一个 heads-up 通知作为 fallback，
-            // 避免 5 分钟循环在后台空转用户看不到任何东西
             showFallbackNotification()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -70,157 +63,146 @@ class ReminderOverlayService : Service() {
 
     @SuppressLint("InflateParams")
     private fun showOverlay() {
-        if (overlayView != null) return // 已经在显示了
+        if (overlayView != null) return
 
-        val cfg = Prefs.getConfig(this)
+        // 只显示"今天到期"的 items（考虑到 intervalDays）
+        val dueItems = Prefs.getDueItems(this)
+
         val label = if (currentAlarmId == ReminderScheduler.ALARM_EVENING) "🌙 睡前提醒" else "☀️ 早上提醒"
+        val ctx = this
 
-        // 用代码动态构建半屏布局，避免写 layout XML 也要处理
-        val context = this
-        val root = LinearLayout(context).apply {
+        val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFFF5F5F5.toInt())
             setPadding(48, 48, 48, 48)
         }
 
-        val title = TextView(context).apply {
-            text = label
-            textSize = 26f
-            setTextColor(0xFF222222.toInt())
-        }
-        root.addView(title)
+        root.addView(TextView(ctx).apply {
+            text = label; textSize = 26f; setTextColor(0xFF222222.toInt())
+        })
+        root.addView(TextView(ctx).apply {
+            text = "手动确认后停止后续提醒；稍后再说则继续"
+            textSize = 13f; setTextColor(0xFF888888.toInt()); setPadding(0, 8, 0, 24)
+        })
 
-        val subtitle = TextView(context).apply {
-            text = "手动确认后将停止后续提醒"
-            textSize = 14f
-            setTextColor(0xFF888888.toInt())
-            setPadding(0, 12, 0, 24)
-        }
-        root.addView(subtitle)
-
-        // 清单
-        val listLayout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        cfg.items.forEachIndexed { _, item ->
-            val row = TextView(context).apply {
-                text = "✅  $item"
-                textSize = 18f
-                setTextColor(0xFF333333.toInt())
+        val listLayout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        if (dueItems.isEmpty()) {
+            listLayout.addView(TextView(ctx).apply {
+                text = "🎉 今日所有提醒已完成！"
+                textSize = 18f; setTextColor(0xFF4CAF50.toInt())
                 setPadding(0, 16, 0, 16)
+            })
+        } else {
+            dueItems.forEach { item ->
+                listLayout.addView(TextView(ctx).apply {
+                    text = "●  ${item.text}${if (item.intervalDays > 1) "  (每${item.intervalDays}天)" else ""}"
+                    textSize = 18f; setTextColor(0xFF333333.toInt())
+                    setPadding(0, 16, 0, 16)
+                })
             }
-            listLayout.addView(row)
         }
 
-        val scroll = ScrollView(context).apply {
+        root.addView(ScrollView(ctx).apply {
             addView(listLayout)
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0, 1f
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-        }
-        root.addView(scroll)
+        })
 
-        val confirmBtn = Button(context).apply {
-            text = "我已完成"
-            textSize = 18f
+        // 主按钮：我已完成（绿色，全宽高亮）
+        root.addView(Button(ctx).apply {
+            text = "✅ 我已完成"; textSize = 18f
             setPadding(0, 40, 0, 40)
-            setBackgroundColor(0xFF4CAF50.toInt())
-            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundColor(0xFF4CAF50.toInt()); setTextColor(0xFFFFFFFF.toInt())
             setOnClickListener { handleConfirm() }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = 32 }
-        }
-        root.addView(confirmBtn)
+        })
+
+        // 次按钮：稍后再说（灰色，不标记完成）
+        root.addView(Button(ctx).apply {
+            text = "⏸ 稍后再说"; textSize = 16f
+            setPadding(0, 28, 0, 28)
+            setBackgroundColor(0xFF9E9E9E.toInt()); setTextColor(0xFFFFFFFF.toInt())
+            setOnClickListener { handleSnooze() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 16 }
+        })
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * 0.5f).toInt(), // 半屏高度
+            (resources.displayMetrics.heightPixels * 0.5f).toInt(),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM
-        }
+        ).apply { gravity = Gravity.BOTTOM }
 
         overlayView = root
         windowManager!!.addView(root, params)
     }
 
+    /** ✅ 我已完成：标记到期 items + 标记时段 + cancelAll + 关窗 */
     private fun handleConfirm() {
-        // 标记今日完成
-        if (currentAlarmId == ReminderScheduler.ALARM_MORNING) {
-            Prefs.confirmMorningDone(this)
-        } else {
-            Prefs.confirmEveningDone(this)
-        }
-        // 取消后续所有挂起闹钟
+        Prefs.markDueItemsDone(this)
+        if (currentAlarmId == ReminderScheduler.ALARM_MORNING) Prefs.confirmMorningDone(this)
+        else Prefs.confirmEveningDone(this)
         ReminderScheduler.cancelAll(this)
-        // 关闭悬浮窗
+        removeOverlay()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** ⏸ 稍后再说：只关窗，不标记完成；AlarmReceiver 已排好的下一次闹钟继续弹 */
+    private fun handleSnooze() {
         removeOverlay()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun removeOverlay() {
-        overlayView?.let {
-            windowManager?.removeView(it)
-            overlayView = null
-        }
+        overlayView?.let { windowManager?.removeView(it); overlayView = null }
     }
 
-    override fun onDestroy() {
-        removeOverlay()
-        super.onDestroy()
-    }
+    override fun onDestroy() { removeOverlay(); super.onDestroy() }
 
     private fun buildNotification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "MedReminder 前台服务", NotificationManager.IMPORTANCE_LOW)
-            nm.createNotificationChannel(ch)
+            nm.createNotificationChannel(NotificationChannel(
+                CHANNEL_ID, "MedReminder 前台服务", NotificationManager.IMPORTANCE_LOW))
         }
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MedReminder")
-            .setContentText("提醒进行中…")
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .build()
+            .setContentTitle("MedReminder").setContentText("提醒进行中…")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details).setContentIntent(pi).setOngoing(true).build()
     }
 
-    /**
-     * 悬浮窗权限缺失时的 fallback：发 heads-up 通知（高优先级，锁屏也能看到）。
-     */
     private fun showFallbackNotification() {
         val nm = getSystemService(NotificationManager::class.java)
-        val fallbackCh = "med_fallback_channel"
+        val ch = "med_fallback_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(fallbackCh, "MedReminder 提醒",
-                NotificationManager.IMPORTANCE_HIGH).apply {
+            nm.createNotificationChannel(NotificationChannel(
+                ch, "MedReminder 提醒", NotificationManager.IMPORTANCE_HIGH).apply {
                 enableLights(true); enableVibration(true)
-            }
-            nm.createNotificationChannel(ch)
+            })
         }
-        val cfg = Prefs.getConfig(this)
-        val body = cfg.items.joinToString(" / ") { "•$it" }
+        val dueItems = Prefs.getDueItems(this)
+        val body = if (dueItems.isEmpty()) "今日提醒已全部完成"
+            else dueItems.joinToString(" / ") { "•${it.text}" }
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-        val n = NotificationCompat.Builder(this, fallbackCh)
-            .setContentTitle("💊 MedReminder")
-            .setContentText(body)
+        nm.notify(9999, NotificationCompat.Builder(this, ch)
+            .setContentTitle("💊 MedReminder").setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pi)
-            .build()
-        nm.notify(9999, n)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
+            .setContentIntent(pi).build())
     }
 }

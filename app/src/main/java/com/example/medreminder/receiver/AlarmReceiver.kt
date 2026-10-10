@@ -39,6 +39,12 @@ class AlarmReceiver : BroadcastReceiver() {
             }
         }
 
+        // 所有 items 今日都已完成（intervalDays 跳过）→ 取消循环
+        if (!isTest && Prefs.getDueItems(context).isEmpty()) {
+            Log.d(TAG, "no due items today → cancel all")
+            ReminderScheduler.cancelAll(context); return
+        }
+
         // 启动前台 Service 显示悬浮窗
         val svcIntent = Intent(context, ReminderOverlayService::class.java)
             .apply { putExtra(ReminderOverlayService.EXTRA_ALARM_ID, alarmId) }
