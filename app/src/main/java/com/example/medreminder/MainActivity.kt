@@ -14,7 +14,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.medreminder.service.BootReceiverService
 import com.example.medreminder.service.ReminderOverlayService
 import com.example.medreminder.ui.SettingsActivity
 import com.example.medreminder.util.PermissionHelper
@@ -33,7 +32,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildLayout())
-        BootReceiverService.start(this)  // 启动常驻前台，动态注册 UnlockReceiver
         requestNotificationPermissionIfNeeded()
         refresh()
     }

@@ -51,17 +51,6 @@
                 android:value="显示提醒悬浮窗" />
         </service>
 
-        <!-- 常驻前台，动态注册 UnlockReceiver（Android 8+ 必需） -->
-        <service
-            android:name=".service.BootReceiverService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="监听解锁事件以触发每日首次提醒" />
-        </service>
-
         <!-- 闹钟触发 -->
         <receiver
             android:name=".receiver.AlarmReceiver"
