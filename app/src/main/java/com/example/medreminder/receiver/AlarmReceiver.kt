@@ -18,17 +18,25 @@ import com.example.medreminder.util.ReminderScheduler
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val alarmId = intent.getIntExtra("alarm_id", 0)
-        Log.d(TAG, "AlarmReceiver fired alarmId=$alarmId")
+        val rawId = intent.getIntExtra("alarm_id", 0)
 
-        // 今天该时段已确认过 → 直接取消，不显示
-        if (alarmId == ReminderScheduler.ALARM_MORNING && Prefs.isMorningDone(context)) {
-            ReminderScheduler.cancelAll(context)
-            return
+        // 测试闹钟（1101/1102）映射成正式 ID（1001/1002），Service 里用正式 ID 显示标题
+        val isTest = rawId == ReminderScheduler.ALARM_TEST_MORNING || rawId == ReminderScheduler.ALARM_TEST_EVENING
+        val alarmId = when (rawId) {
+            ReminderScheduler.ALARM_TEST_MORNING -> ReminderScheduler.ALARM_MORNING
+            ReminderScheduler.ALARM_TEST_EVENING -> ReminderScheduler.ALARM_EVENING
+            else -> rawId
         }
-        if (alarmId == ReminderScheduler.ALARM_EVENING && Prefs.isEveningDone(context)) {
-            ReminderScheduler.cancelAll(context)
-            return
+        Log.d(TAG, "AlarmReceiver fired rawId=$rawId mapped=$alarmId test=$isTest")
+
+        // 正式闹钟：今天已确认过 → 取消不显示
+        if (!isTest) {
+            if (alarmId == ReminderScheduler.ALARM_MORNING && Prefs.isMorningDone(context)) {
+                ReminderScheduler.cancelAll(context); return
+            }
+            if (alarmId == ReminderScheduler.ALARM_EVENING && Prefs.isEveningDone(context)) {
+                ReminderScheduler.cancelAll(context); return
+            }
         }
 
         // 启动前台 Service 显示悬浮窗
@@ -40,13 +48,15 @@ class AlarmReceiver : BroadcastReceiver() {
             context.startService(svcIntent)
         }
 
-        // 排下一次（用户没手动确认就会一直响）
-        val cfg = Prefs.getConfig(context)
-        val interval = when (alarmId) {
-            ReminderScheduler.ALARM_EVENING -> cfg.eveningIntervalMin
-            else -> cfg.morningIntervalMin
+        // 只有正式闹钟才排下一次循环；测试闹钟只弹一次
+        if (!isTest) {
+            val cfg = Prefs.getConfig(context)
+            val interval = when (alarmId) {
+                ReminderScheduler.ALARM_EVENING -> cfg.eveningIntervalMin
+                else -> cfg.morningIntervalMin
+            }
+            ReminderScheduler.scheduleNext(context, alarmId, interval * 60L * 1000L)
         }
-        ReminderScheduler.scheduleNext(context, alarmId, interval * 60L * 1000L)
     }
 
     companion object { private const val TAG = "AlarmReceiver" }

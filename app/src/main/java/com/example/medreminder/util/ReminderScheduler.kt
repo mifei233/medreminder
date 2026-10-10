@@ -24,6 +24,8 @@ object ReminderScheduler {
 
     const val ALARM_MORNING = 1001
     const val ALARM_EVENING = 1002
+    const val ALARM_TEST_MORNING = 1101   // 一次性测试（不触发循环）
+    const val ALARM_TEST_EVENING = 1102
     const val ALARM_ACTION = "com.example.medreminder.ALARM_TRIGGERED"
 
     /** 触发早上的提醒序列（第一次由 UnlockReceiver 调） */
@@ -50,7 +52,20 @@ object ReminderScheduler {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(pendingIntentFor(ctx, ALARM_MORNING))
         am.cancel(pendingIntentFor(ctx, ALARM_EVENING))
+        am.cancel(pendingIntentFor(ctx, ALARM_TEST_MORNING))
+        am.cancel(pendingIntentFor(ctx, ALARM_TEST_EVENING))
         Log.d(TAG, "cancelAll")
+    }
+
+    /**
+     * 一次性测试：delayMs 后触发悬浮窗，不排后续循环闹钟。
+     * 主界面测试按钮用这个，用户返回桌面后 AlarmReceiver 才弹窗。
+     */
+    fun scheduleTest(ctx: Context, isMorning: Boolean, delayMs: Long = 2000L) {
+        val alarmId = if (isMorning) ALARM_TEST_MORNING else ALARM_TEST_EVENING
+        val triggerAt = System.currentTimeMillis() + delayMs
+        setAlarm(ctx, alarmId, triggerAt)
+        Log.d(TAG, "scheduleTest isMorning=$isMorning triggerAt=$triggerAt")
     }
 
     /**

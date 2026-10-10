@@ -126,21 +126,16 @@ class MainActivity : AppCompatActivity() {
         root.addView(makeBtn("🔧 设置", 0xFF2196F3.toInt()) {
             startActivity(Intent(ctx, SettingsActivity::class.java))
         })
-        root.addView(makeBtn("🧪 手动测试早上提醒", 0xFF4CAF50.toInt()) {
+        root.addView(makeBtn("🧪 测试早上提醒（2秒后桌面弹窗）", 0xFF4CAF50.toInt()) {
             Prefs.recordMorningTriggered(ctx)
-            ReminderScheduler.startMorningSeries(ctx)
-            val svc = Intent(ctx, ReminderOverlayService::class.java)
-                .apply { putExtra(ReminderOverlayService.EXTRA_ALARM_ID, ReminderScheduler.ALARM_MORNING) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc)
-            else startService(svc)
-            refresh()
+            ReminderScheduler.scheduleTest(ctx, isMorning = true)
+            Toast.makeText(ctx, "请返回桌面，2秒后弹出提醒", Toast.LENGTH_LONG).show()
+            moveTaskToBack(true)
         })
-        root.addView(makeBtn("🌙 手动测试晚上提醒", 0xFF795548.toInt()) {
-            val svc = Intent(ctx, ReminderOverlayService::class.java)
-                .apply { putExtra(ReminderOverlayService.EXTRA_ALARM_ID, ReminderScheduler.ALARM_EVENING) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc)
-            else startService(svc)
-            refresh()
+        root.addView(makeBtn("🌙 测试晚上提醒（2秒后桌面弹窗）", 0xFF795548.toInt()) {
+            ReminderScheduler.scheduleTest(ctx, isMorning = false)
+            Toast.makeText(ctx, "请返回桌面，2秒后弹出提醒", Toast.LENGTH_LONG).show()
+            moveTaskToBack(true)
         })
         root.addView(makeBtn("📝 取消今日全部提醒", 0xFFF44336.toInt()) {
             ReminderScheduler.cancelAll(ctx)

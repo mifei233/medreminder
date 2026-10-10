@@ -2,7 +2,6 @@ package com.example.medreminder.ui
 
 import android.content.Context
 import android.os.Bundle
-import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -16,11 +15,7 @@ import com.example.medreminder.util.Prefs
 import com.example.medreminder.util.ReminderScheduler
 
 /**
- * 设置页
- * - 早上/晚上触发时间（TimePicker，默认 05:00 / 22:00）
- * - 早上/晚上提醒间隔（分钟）
- * - 可编辑的提醒清单（动态增删）
- * - 保存后立即生效
+ * 设置页（整个页面在 ScrollView 里，任何屏幕尺寸都能滚到保存按钮）
  */
 class SettingsActivity : AppCompatActivity() {
 
@@ -47,7 +42,6 @@ class SettingsActivity : AppCompatActivity() {
         eveningIntervalEdit.setText(cfg.eveningIntervalMin.toString())
 
         cfg.items.forEach { addItemEdit(it) }
-        // 保证至少有一个空白输入框
         if (itemEditTexts.isEmpty()) addItemEdit("")
     }
 
@@ -83,8 +77,6 @@ class SettingsActivity : AppCompatActivity() {
             items = items
         )
         Prefs.saveConfig(this, cfg)
-
-        // 取消旧闹钟，按新配置重排（如果今天还没过）
         ReminderScheduler.cancelAll(this)
         ReminderScheduler.rescheduleAfterBoot(this)
 
@@ -92,7 +84,11 @@ class SettingsActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun buildLayout(): LinearLayout {
+    /**
+     * 根 ScrollView 包 LinearLayout —— 整页可滚，TimePicker + 清单 + 保存按钮
+     * 任何一项都不会被屏幕截断。
+     */
+    private fun buildLayout(): ScrollView {
         val ctx = this
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -126,7 +122,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(eveningPicker)
 
-        // 间隔
+        // 间隔（横向两个输入框）
         val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         intervalField(ctx, "早间隔(分)").let { (container, et) ->
             morningIntervalEdit = et
@@ -138,16 +134,13 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(row1)
 
-        // 编辑清单
+        // 编辑清单（直接堆 LinearLayout，因为外层已经有 ScrollView 了
         root.addView(sectionLabel("📋 提醒清单"))
-        itemsContainer = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(ctx).apply {
-            addView(itemsContainer)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-            ).apply { topMargin = 8; bottomMargin = 16 }
+        itemsContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8, 0, 0)
         }
-        root.addView(scroll)
+        root.addView(itemsContainer)
 
         // 添加按钮
         root.addView(Button(ctx).apply {
@@ -156,7 +149,7 @@ class SettingsActivity : AppCompatActivity() {
             setOnClickListener { addItemEdit("") }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 24 }
+            ).apply { topMargin = 8; bottomMargin = 24 }
         })
 
         // 保存
@@ -168,7 +161,11 @@ class SettingsActivity : AppCompatActivity() {
             setOnClickListener { save() }
         })
 
-        return root
+        // 用 ScrollView 包住整个 LinearLayout —— 这就是整页可滚的关键
+        return ScrollView(ctx).apply {
+            addView(root)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
     }
 
     private fun sectionLabel(text: String) = TextView(this).apply {
