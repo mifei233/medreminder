@@ -24,8 +24,8 @@ local.properties
 Thumbs.db
 
 # APK outputs
+*.apk
 *.aab
-!app/build/outputs/apk/debug/app-debug.apk
 
 # Captures
 *.png
